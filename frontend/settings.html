@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings - Pothole Detection</title>
+    <link rel="stylesheet" href="./assets/css/style.css" />
+    <style>
+      .settings-container { max-width: 600px; margin: 0 auto; }
+      .setting-group { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #e5e7eb; }
+      .setting-group:last-child { border-bottom: none; }
+      .setting-label { font-weight: 600; margin-bottom: 8px; display: block; }
+      .setting-description { font-size: 14px; color: #666; margin-bottom: 10px; }
+      .setting-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: monospace; }
+      .btn-group { display: flex; gap: 10px; }
+      .status-box { padding: 12px; border-radius: 6px; margin-bottom: 15px; }
+      .status-box.ok { background: #d1fae5; border: 1px solid #6ee7b7; color: #065f46; }
+      .status-box.error { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+      .status-box.warning { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h2>Settings</h2>
+      <nav>
+        <a href="./index.html">Home</a>
+        <a href="./detect.html">Live Detection</a>
+        <a href="./upload.html">Upload Detection</a>
+        <a href="./map.html">Map</a>
+        <a href="./reports.html">Reports</a>
+        <a href="./settings.html" style="font-weight: bold;">Settings</a>
+      </nav>
+    </header>
+    <main>
+      <div class="card settings-container">
+        <h3 class="section-title">Configuration</h3>
+        
+        <div id="status-message"></div>
+        
+        <div class="setting-group">
+          <label class="setting-label">🔌 Backend API URL</label>
+          <p class="setting-description">
+            Configure where the frontend sends detection requests. For phone access via tunnels, enter the backend tunnel URL.
+          </p>
+          <input type="text" id="api-url-input" class="setting-input" placeholder="e.g., https://thereof-math-inns-scored.trycloudflare.com" />
+          <p class="muted" style="margin-top: 8px; font-size: 12px;">
+            Current: <code id="current-api-url" style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;"></code>
+          </p>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">📱 Accessing from Phone?</label>
+          <p class="setting-description">
+            If you're accessing this website from your phone via a tunnel (trycloudflare.com URL), you need to set the backend API URL below.
+          </p>
+          <div style="background: #f0f9ff; border-left: 4px solid #0284c7; padding: 12px; border-radius: 4px; margin-bottom: 15px;">
+            <p style="margin: 0; font-size: 14px;"><strong>Steps:</strong></p>
+            <ol style="margin: 8px 0 0 20px; padding: 0;">
+              <li>On your phone, open the frontend tunnel URL (trycloudflare.com)</li>
+              <li>Go to Settings page (this page)</li>
+              <li>Copy the backend tunnel URL from your laptop Terminal 3</li>
+              <li>Paste it in the "Backend API URL" field above</li>
+              <li>Click "Save & Test"</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">🎯 How to Find Backend Tunnel URL</label>
+          <p class="setting-description">
+            Run on your laptop and check Terminal 3 output:
+          </p>
+          <div style="background: #1f2937; color: #10b981; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; overflow-x: auto;">
+            <p style="margin: 0 0 8px 0;">.\run_mobile_backend_tunnel.ps1</p>
+            <p style="margin: 0 0 4px 0;">↓ Look for this in output:</p>
+            <p style="margin: 0;">https://thereof-math-inns-scored.trycloudflare.com</p>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">⚙️ Advanced Settings</label>
+          <button class="btn secondary" id="reset-btn" style="width: 100%;">Reset to Defaults</button>
+        </div>
+
+        <div class="setting-group">
+          <div class="btn-group">
+            <button class="btn" id="save-btn" style="flex: 1;">💾 Save & Test</button>
+            <button class="btn secondary" id="clear-btn" style="flex: 1;">🗑️ Clear</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">🧪 Connection Test</label>
+          <button class="btn secondary" id="test-btn" style="width: 100%;">Test API Connection</button>
+          <div id="test-result" style="margin-top: 10px;"></div>
+        </div>
+      </div>
+    </main>
+
+    <script src="./assets/js/api.js"></script>
+    <script>
+      const apiUrlInput = document.getElementById("api-url-input");
+      const currentApiUrlDisplay = document.getElementById("current-api-url");
+      const statusMessage = document.getElementById("status-message");
+      const saveBtn = document.getElementById("save-btn");
+      const clearBtn = document.getElementById("clear-btn");
+      const resetBtn = document.getElementById("reset-btn");
+      const testBtn = document.getElementById("test-btn");
+      const testResult = document.getElementById("test-result");
+
+      function showStatus(message, type = "ok") {
+        statusMessage.innerHTML = `<div class="status-box ${type}">${message}</div>`;
+        setTimeout(() => {
+          statusMessage.innerHTML = "";
+        }, 5000);
+      }
+
+      function updateCurrentUrlDisplay() {
+        currentApiUrlDisplay.textContent = API_BASE_URL;
+      }
+
+      function init() {
+        updateCurrentUrlDisplay();
+        apiUrlInput.value = API_BASE_URL;
+      }
+
+      saveBtn.addEventListener("click", () => {
+        const url = apiUrlInput.value.trim();
+        if (!url) {
+          showStatus("❌ Please enter an API URL", "error");
+          return;
+        }
+        localStorage.setItem("API_BASE_URL", url);
+        API_BASE_URL = url;
+        updateCurrentUrlDisplay();
+        showStatus("✅ API URL saved! Testing connection...", "ok");
+        testConnection();
+      });
+
+      clearBtn.addEventListener("click", () => {
+        apiUrlInput.value = "";
+        showStatus("✅ Input cleared", "ok");
+      });
+
+      resetBtn.addEventListener("click", () => {
+        if (confirm("Reset to default API configuration?")) {
+          localStorage.removeItem("API_BASE_URL");
+          API_BASE_URL = DEFAULT_API_BASE_URL;
+          init();
+          showStatus("✅ Reset to defaults", "ok");
+        }
+      });
+
+      async function testConnection() {
+        testResult.innerHTML = '<p class="muted">🔄 Testing connection...</p>';
+        try {
+          const response = await fetch(`${API_BASE_URL}/health`);
+          if (response.ok) {
+            const data = await response.json();
+            testResult.innerHTML = `
+              <div class="status-box ok">
+                <strong>✅ Connection Successful!</strong><br/>
+                Status: ${data.status}<br/>
+                Model: ${data.model_source}
+              </div>
+            `;
+          } else {
+            testResult.innerHTML = `
+              <div class="status-box error">
+                <strong>❌ Connection Failed</strong><br/>
+                HTTP ${response.status}: ${await response.text()}
+              </div>
+            `;
+          }
+        } catch (err) {
+          testResult.innerHTML = `
+            <div class="status-box error">
+              <strong>❌ Connection Failed</strong><br/>
+              ${err.message}
+            </div>
+          `;
+        }
+      }
+
+      testBtn.addEventListener("click", testConnection);
+
+      init();
+    </script>
+  </body>
+</html>

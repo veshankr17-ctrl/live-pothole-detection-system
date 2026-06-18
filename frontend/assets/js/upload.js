@@ -1,0 +1,189 @@
+const uploadInput = document.getElementById("upload-input");
+const uploadPreview = document.getElementById("upload-preview");
+const uploadOverlay = document.getElementById("upload-overlay");
+const uploadStateEl = document.getElementById("upload-state");
+const gpsEl = document.getElementById("gps-state");
+const detectUploadBtn = document.getElementById("detect-upload-btn");
+const saveUploadBtn = document.getElementById("save-upload-btn");
+
+const uploadCtx = uploadOverlay.getContext("2d");
+
+let uploadedImageBase64 = null;
+let uploadedDetectionResult = null;
+let latestLocation = null;
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.35;
+
+function setText(el, text, cls) {
+  el.textContent = text;
+  el.className = `status ${cls || ""}`;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function drawUploadDetections(detections) {
+  if (!uploadPreview.naturalWidth || !uploadPreview.naturalHeight) return;
+  uploadOverlay.width = uploadPreview.clientWidth;
+  uploadOverlay.height = uploadPreview.clientHeight;
+  const scaleX = uploadOverlay.width / uploadPreview.naturalWidth;
+  const scaleY = uploadOverlay.height / uploadPreview.naturalHeight;
+  uploadCtx.clearRect(0, 0, uploadOverlay.width, uploadOverlay.height);
+  uploadCtx.lineWidth = 2;
+  uploadCtx.font = "14px Arial";
+  for (const d of detections) {
+    const x = d.x1 * scaleX;
+    const y = d.y1 * scaleY;
+    const w = (d.x2 - d.x1) * scaleX;
+    const h = (d.y2 - d.y1) * scaleY;
+    uploadCtx.strokeStyle = "#ef4444";
+    uploadCtx.fillStyle = "#ef4444";
+    uploadCtx.strokeRect(x, y, w, h);
+    uploadCtx.fillText(`${d.class_name} ${Math.round(d.confidence * 100)}%`, x, Math.max(y - 5, 12));
+  }
+}
+
+function startLocationTracking() {
+  if (!navigator.geolocation) {
+    setText(gpsEl, "Geolocation not supported", "warn");
+    return;
+  }
+  
+  // Request permission explicitly (for iOS 13+)
+  if (navigator.geolocation.requestPermission) {
+    navigator.geolocation.requestPermission().then((permission) => {
+      if (permission === "granted") {
+        setText(gpsEl, "GPS permission granted. Acquiring location...", "ok");
+        startWatchPosition();
+      } else if (permission === "denied") {
+        setText(gpsEl, "GPS permission denied. Report will save without map pin.", "warn");
+      } else {
+        setText(gpsEl, "GPS permission not decided", "warn");
+      }
+    }).catch((error) => {
+      setText(gpsEl, `GPS error: ${error.message}`, "err");
+    });
+  } else {
+    // For browsers without requestPermission (Android Chrome)
+    setText(gpsEl, "Requesting GPS location...", "ok");
+    startWatchPosition();
+  }
+}
+
+function startWatchPosition() {
+  navigator.geolocation.watchPosition(
+    (pos) => {
+      latestLocation = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        location_accuracy: pos.coords.accuracy,
+      };
+      setText(
+        gpsEl,
+        `GPS: ${latestLocation.latitude.toFixed(5)}, ${latestLocation.longitude.toFixed(5)} (±${Math.round(latestLocation.location_accuracy)}m)`,
+        "ok"
+      );
+    },
+    (error) => {
+      if (error.code === error.PERMISSION_DENIED) {
+        setText(gpsEl, "GPS permission denied. Report will save without map pin.", "warn");
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        setText(gpsEl, "Location information unavailable. Using last known location.", "warn");
+      } else if (error.code === error.TIMEOUT) {
+        setText(gpsEl, "GPS location request timed out. Retrying...", "warn");
+      } else {
+        setText(gpsEl, `GPS error: ${error.message}`, "err");
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+  );
+}
+
+async function saveUploadedReport() {
+  if (!uploadedImageBase64 || !uploadedDetectionResult || !uploadedDetectionResult.has_pothole) {
+    setText(uploadStateEl, "Detect pothole in uploaded image first.", "warn");
+    return;
+  }
+  const payload = {
+    image_base64: uploadedImageBase64,
+    confidence: uploadedDetectionResult.max_confidence,
+    detections_count: uploadedDetectionResult.detections.length,
+    detected_at: new Date().toISOString(),
+    ...latestLocation,
+  };
+  try {
+    const result = await saveReportData(payload);
+    const mode = result?.is_fallback ? " (local fallback)" : "";
+    setText(uploadStateEl, `Uploaded report saved: ${result.report_id}${mode}`, "ok");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    setText(uploadStateEl, `Failed to save uploaded report: ${msg.slice(0, 120)}`, "err");
+  }
+}
+
+uploadInput.addEventListener("change", async () => {
+  const file = uploadInput.files?.[0];
+  if (!file) {
+    uploadedImageBase64 = null;
+    setText(uploadStateEl, "No uploaded image selected.", "warn");
+    return;
+  }
+  try {
+    const raw = await fileToBase64(file);
+    uploadedImageBase64 = await compressDataUrlForApi(raw);
+    uploadedDetectionResult = null;
+    saveUploadBtn.disabled = true;
+    uploadPreview.src = uploadedImageBase64;
+    uploadPreview.style.display = "block";
+    uploadOverlay.style.display = "block";
+    uploadCtx.clearRect(0, 0, uploadOverlay.width, uploadOverlay.height);
+    setText(uploadStateEl, `Image selected: ${file.name}. Click detect.`, "ok");
+  } catch {
+    setText(uploadStateEl, "Could not read selected image.", "err");
+  }
+});
+
+detectUploadBtn.addEventListener("click", async () => {
+  const selectedFile = uploadInput.files?.[0];
+  if (!selectedFile) {
+    setText(uploadStateEl, "Please choose an image first.", "warn");
+    return;
+  }
+  if (!uploadedImageBase64) {
+    uploadedImageBase64 = await compressDataUrlForApi(await fileToBase64(selectedFile));
+  }
+  try {
+    detectUploadBtn.disabled = true;
+    setText(uploadStateEl, "Running detection... please wait (free server can be slow).", "warn");
+    const result = await predictPothole(uploadedImageBase64, DEFAULT_CONFIDENCE_THRESHOLD);
+    uploadedDetectionResult = result;
+    setTimeout(() => drawUploadDetections(result.detections), 80);
+    if (result.has_pothole) {
+      saveUploadBtn.disabled = false;
+      const mode = result?.is_fallback ? " [local detector]" : "";
+      setText(uploadStateEl, `Pothole detected (${Math.round(result.max_confidence * 100)}%)${mode}. Click save.`, "warn");
+    } else {
+      saveUploadBtn.disabled = true;
+      const mode = result?.is_fallback ? " (local detector active)" : "";
+      setText(uploadStateEl, `No pothole detected in uploaded image${mode}.`, "ok");
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.toLowerCase().includes("abort")) {
+      setText(uploadStateEl, "Upload prediction timed out on free server. Try smaller image or lower quality.", "warn");
+    } else {
+      setText(uploadStateEl, `Upload detection failed: ${msg.slice(0, 160)}`, "err");
+    }
+  } finally {
+    detectUploadBtn.disabled = false;
+  }
+});
+
+saveUploadBtn.addEventListener("click", saveUploadedReport);
+
+startLocationTracking();

@@ -1,0 +1,31 @@
+﻿# Python
+.venv/
+.venv-train/
+backend/.venv/
+backend/.venv310/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local data
+*.db
+*.sqlite3
+backend/uploads/
+
+# Model weights (add best.pt locally or via Git LFS / release)
+backend/models/*.pt
+backend/models/best/
+yolov8n.pt
+best.pt/
+best.pt.zip
+runs/
+
+# Archives and binaries
+archive (3)/
+tools/
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
