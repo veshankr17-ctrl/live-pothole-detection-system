@@ -1,109 +1,254 @@
-# Live Pothole Detection System
+# Live Pothole Detection System using YOLOv8
 
-Web app for real-time and image-based pothole detection using YOLOv8.
+## Overview
 
-**Features:** live camera detection, image upload, bounding-box overlay, auto-save reports, map pins with GPS.
+The Live Pothole Detection System is a computer vision-based web application that detects potholes from camera input using the YOLOv8 object detection model. The system captures pothole locations using browser geolocation, stores reports in a database, and visualizes detected potholes on an interactive map.
+
+This project aims to assist in road condition monitoring by enabling automated pothole reporting and location tracking.
+
+---
+
+## Features
+
+* Real-time pothole detection using YOLOv8
+* Browser camera integration
+* Automatic GPS location capture
+* Confidence score reporting
+* Interactive pothole map visualization
+* Report history management
+* Mobile device support
+* FastAPI backend for inference and data handling
+* SQLite database for report storage
+* Leaflet and OpenStreetMap integration
+
+---
+
+## System Architecture
+
+Frontend:
+
+* HTML
+* CSS
+* JavaScript
+
+Backend:
+
+* FastAPI
+* Python
+
+Machine Learning:
+
+* YOLOv8 (Ultralytics)
+
+Database:
+
+* SQLite
+
+Mapping:
+
+* Leaflet.js
+* OpenStreetMap
+
+---
 
 ## Project Structure
 
-```
-Pothole_Detection/
+```text
+live-pothole-detection-system/
+│
 ├── backend/
-│   ├── app/main.py          # FastAPI server + YOLO inference
-│   ├── models/              # Place trained best.pt here
+│   ├── app/
+│   │   └── main.py
+│   ├── models/
 │   └── requirements.txt
+│
 ├── frontend/
-│   ├── *.html               # App pages
-│   └── assets/css, js/      # Styles and client logic
-├── scripts/copy_best_model.py
-├── colab/train_colab.py     # Optional Colab training script
-├── train_model.py           # Local training
-├── data.yaml                # Dataset config for training
-├── cleanup_reports.py       # Clear local test reports
-├── run_backend.ps1
-├── run_frontend.ps1
-├── run_mobile_tunnel.ps1
-└── run_mobile_backend_tunnel.ps1
+│   ├── assets/
+│   │   ├── css/
+│   │   └── js/
+│   ├── index.html
+│   ├── detect.html
+│   ├── map.html
+│   ├── reports.html
+│   ├── settings.html
+│   └── upload.html
+│
+├── scripts/
+│   └── copy_best_model.py
+│
+├── colab/
+│   └── train_colab.py
+│
+├── train_model.py
+├── data.yaml
+├── PROJECT_DOCUMENTATION.md
+└── README.md
 ```
 
-## Setup
+---
 
-### 1. Install backend dependencies
+## How It Works
 
-```powershell
+1. User opens the web application.
+2. Browser requests camera and location permissions.
+3. Video frames are captured periodically.
+4. Frames are sent to the FastAPI backend.
+5. YOLOv8 performs pothole detection.
+6. Bounding boxes are displayed on the screen.
+7. Detected potholes are automatically saved with:
+
+   * Confidence score
+   * Timestamp
+   * Latitude
+   * Longitude
+8. Stored reports are displayed on:
+
+   * Reports page
+   * Interactive map page
+
+---
+
+## Installation and Setup
+
+### Clone Repository
+
+```bash
+git clone https://github.com/veshankr17-ctrl/live-pothole-detection-system.git
+cd live-pothole-detection-system
+```
+
+### Backend Setup
+
+```bash
 cd backend
+
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+
+.venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
 
-### 2. Add the trained model
+### Run Backend
 
-Copy your trained weights to:
-
-```
-backend/models/best.pt
+```bash
+uvicorn app.main:app --reload
 ```
 
-If missing, the API falls back to the default `yolov8n.pt` (downloaded automatically on first run).
+Backend will start at:
 
-After local training:
-
-```powershell
-python scripts\copy_best_model.py
+```text
+http://127.0.0.1:8000
 ```
 
-### 3. Run locally
+---
 
-```powershell
-.\run_backend.ps1
-.\run_frontend.ps1
+### Frontend Setup
+
+Open a new terminal:
+
+```bash
+cd frontend
+
+python -m http.server 5500
 ```
 
-Open: `http://127.0.0.1:5501`
+Open:
 
-## Mobile Access
-
-**Same Wi-Fi:** open `http://<your-laptop-ip>:5501` on your phone.
-
-**HTTPS tunnel (camera on mobile):** install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/), then:
-
-```powershell
-.\run_mobile_backend_tunnel.ps1
-.\run_mobile_tunnel.ps1
+```text
+http://127.0.0.1:5500
 ```
 
-Open on phone:
+---
 
+## Model Training
+
+Install Ultralytics:
+
+```bash
+pip install ultralytics
 ```
-https://FRONTEND.trycloudflare.com/detect.html?api=https://BACKEND.trycloudflare.com
-```
 
-## Training
+Train the model:
 
-Requires dataset folders in project root:
-
-- `train/images`, `train/labels`
-- `valid/images`, `valid/labels`
-
-```powershell
+```bash
 python train_model.py
-python scripts\copy_best_model.py
 ```
+
+The trained model will be generated in:
+
+```text
+runs/pothole_yolov8n/weights/best.pt
+```
+
+Copy the trained model:
+
+```bash
+python scripts/copy_best_model.py
+```
+
+---
 
 ## API Endpoints
 
-| Method | Endpoint     | Description        |
-|--------|--------------|--------------------|
-| GET    | `/health`    | Health check       |
-| POST   | `/predict`   | Detect potholes    |
-| POST   | `/reports`   | Save a report      |
-| GET    | `/reports`   | List reports       |
-| GET    | `/map-points`| Map pin coordinates|
+### Health Check
 
-## Pages
+```http
+GET /health
+```
 
-- `frontend/detect.html` — live + upload detection
-- `frontend/map.html` — pothole map
-- `frontend/reports.html` — saved reports
-- `frontend/settings.html` — API URL settings
+### Pothole Detection
+
+```http
+POST /predict
+```
+
+### Save Report
+
+```http
+POST /reports
+```
+
+### Get Reports
+
+```http
+GET /reports
+```
+
+### Map Data
+
+```http
+GET /map-points
+```
+
+---
+
+## Technologies Used
+
+* Python
+* FastAPI
+* YOLOv8
+* OpenCV
+* SQLite
+* HTML
+* CSS
+* JavaScript
+* Leaflet.js
+* OpenStreetMap
+
+---
+
+## Future Enhancements
+
+* Cloud database integration
+* Cloud image storage
+* Address extraction through reverse geocoding
+* Advanced report filtering
+* Real-time dashboard analytics
+* Mobile application version
+
+---
+
+## Project Outcome
+
+The system successfully detects potholes using a trained YOLOv8 model, records their geographic locations, stores reports, and visualizes affected areas through an interactive map interface, providing a practical solution for road condition monitoring and reporting.
